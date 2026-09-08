@@ -1,0 +1,15 @@
+// Same Miryoku keymap as the halves ran when the left was central: the keymap
+// lives on whichever device is central, so it moves here wholesale.
+#include "../../../../miryoku/custom_config.h"
+#include "../../../../miryoku/mapping/42/corne.h"
+#include "../../../../miryoku/miryoku.dtsi"
+
+&u_mt {
+  flavor = "balanced";
+  require-prior-idle-ms = <300>;
+};
+
+&u_lt {
+  tapping-term-ms = <280>;
+  quick-tap-ms = <200>;
+};

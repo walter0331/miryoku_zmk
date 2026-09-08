@@ -18,6 +18,9 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=zmkfirmware/zmk-build-arm:stable
 MODULE_TAG=v2.2.3
+# carrefinho's module is the only one with a dongle-mode display; its main
+# branch targets ZMK v0.3/Zephyr 3.5, so ZMK main needs this branch.
+CARREFINHO_BRANCH=feat/new-status-screens
 
 # nice!nano v2 is "nice_nano/nrf52840/zmk" on ZMK main: hardware-model-v2
 # renamed it, and the old "nice_nano_v2" no longer resolves. Revision
@@ -28,6 +31,8 @@ DONGLE_BOARD=xiao_ble/nrf52840/zmk
 [ -d "$ROOT/zmk" ] || git clone --depth 1 https://github.com/zmkfirmware/zmk.git "$ROOT/zmk"
 [ -d "$ROOT/prospector-zmk-module" ] || git clone --depth 1 -b "$MODULE_TAG" \
   https://github.com/t-ogura/prospector-zmk-module.git "$ROOT/prospector-zmk-module"
+[ -d "$ROOT/prospector-carrefinho" ] || git clone --depth 1 -b "$CARREFINHO_BRANCH" \
+  https://github.com/carrefinho/prospector-zmk-module.git "$ROOT/prospector-carrefinho"
 [ -d "$ROOT/zmk/zephyr" ] || docker run --rm -v "$ROOT:/w" -w /w/zmk "$IMAGE" \
   sh -c 'west init -l app && west update && west zephyr-export'
 
@@ -45,12 +50,24 @@ build() { # name board shield extra-args...
 # The scanner's own settings are build-time only, so they live here rather
 # than in a conf file: layout 2 is Operator, and the ambient light sensor is
 # off because with none fitted the backlight pins to 5% and looks dead.
+adv_args="-DCONFIG_ZMK_STATUS_ADVERTISEMENT=y \
+ -DCONFIG_ZMK_STATUS_ADV_KEYBOARD_NAME=\"Walter Corne\" \
+ -DCONFIG_ZMK_STATUS_ADV_CENTRAL_SIDE=\"LEFT\""
+
 scanner_args="-DCONFIG_PROSPECTOR_DEFAULT_LAYOUT=2 \
  -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80"
 
 for target in ${*:-left right scanner}; do
   case $target in
-    left)    build left  "$BOARD" "corne_left nice_view_adapter nice_view" ;;
+    # scanner setup: left is central and broadcasts status for the Prospector
+    left)    build left  "$BOARD" "corne_left nice_view_adapter nice_view" $adv_args ;;
+    # dongle setup: the Prospector is central, so both halves are peripherals
+    # and no status advertisement is needed (the dongle drives its own screen)
+    left_peripheral) build left_peripheral "$BOARD" \
+               "corne_left nice_view_adapter nice_view" \
+               -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n ;;
+    dongle)  build dongle "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
+               -DZMK_EXTRA_MODULES=/w/prospector-carrefinho ;;
     right)   build right "$BOARD" "corne_right nice_view_adapter nice_view" ;;
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
     scanner) build scanner "$DONGLE_BOARD" prospector_scanner \
@@ -62,6 +79,7 @@ for target in ${*:-left right scanner}; do
                -DEXTRA_CONF_FILE=/w/zmk-config-prospector/config/prospector_scanner_touch.conf ;;
     # flash to both halves to clear BLE bonds, then reflash the real firmware
     reset)   build reset "$BOARD" settings_reset ;;
+    reset_dongle) build reset_dongle "$DONGLE_BOARD" settings_reset ;;
     *) echo "unknown target: $target" >&2; exit 1 ;;
   esac
 done

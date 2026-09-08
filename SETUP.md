@@ -101,3 +101,46 @@ whenever a host refuses to reconnect. Also "Forget" it on the host.
 - Inner right thumb switch died (Enter) — replaced.
 - `n` chattered; debounce raised. Watch that half: the aluminium case has a known
   ESD failure mode (see `../case-issue.md`).
+
+## Dongle mode (experiment, 2026-09-09)
+
+The Prospector becomes the central and runs the keymap; both halves become
+peripherals. Motivation: the monitor's USB hub follows the active display
+input, so moving the screen between the two Macs moves the keyboard with it —
+no BLE profile switching. It also equalises left/right latency, since today the
+left half is local and the right arrives over BLE.
+
+    ./build.sh dongle left_peripheral right reset reset_dongle
+
+| Target | Board | Notes |
+|---|---|---|
+| `dongle` | `xiao_ble/nrf52840/zmk` | shields `corne_dongle prospector_adapter`, carrefinho module |
+| `left_peripheral` | `nice_nano/nrf52840/zmk` | same shield as `left` plus `ZMK_SPLIT_ROLE_CENTRAL=n` |
+| `right` | | unchanged — it was already a peripheral |
+
+**Pairing is automatic.** Split bonds are not BLE profiles: the dongle scans for
+peripherals advertising the split service and bonds to the first two it finds.
+The procedure is `settings_reset` on all three (so the halves forget the old
+left-as-central bond), then the real images, then power all three on together.
+The five BLE profiles now belong to the dongle.
+
+### What this costs
+
+- No dongle, no keyboard — the halves cannot talk to a host on their own.
+- The Prospector stops being a passive scanner. Dongle-mode display needs
+  carrefinho's module, so the t-ogura touch/swipe scanner build does not apply.
+- Fixes neither the hold-tap misfires (decided from press durations on whichever
+  device is central) nor switch chatter (mechanical).
+
+### Config-file traps found while building this
+
+- `config/corne.conf` is merged for **every** `corne*` shield, the dongle
+  included. Module-specific symbols there are fatal for builds without that
+  module: undefined Kconfig symbols are a hard error, not a warning. The
+  status-advertisement settings therefore live in `build.sh` as per-target
+  flags, not in the conf.
+- `ZMK_SPLIT_ROLE_CENTRAL` is per-setup for the same shield, so it is a
+  per-target flag too, not `config/corne_left.conf`.
+- Peripherals report already-transformed key positions (`corne_right.overlay`
+  sets `col-offset = <6>`), so the dongle's matrix transform exists only to
+  declare 42 positions for the keymap. No position offsets to invent.
