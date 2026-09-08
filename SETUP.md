@@ -72,8 +72,14 @@ Extra layer is QWERTY by default, so it is now identical to Base.
 - **`carrefinho/prospector-zmk-module` targets ZMK v0.3 / Zephyr 3.5.** We use
   `t-ogura/…` v2.2.3, which supports ZMK main. Relevant if dongle mode is ever
   revisited.
-- **Ambient light sensor**: if none is fitted, the backlight pins to 5% and the
-  screen looks dead. `build.sh` disables it and fixes brightness at 80%.
+- **No ambient light sensor.** The beekeeb pre-soldered Prospector (XIAO nRF52840
+  + Waveshare 1.69" touch LCD, 240x280) ships without an APDS9960 — its case
+  "does not support a proximity sensor". With the sensor enabled in firmware but
+  absent in hardware the backlight pins to `ALS_MIN_BRIGHTNESS=5` and the screen
+  looks dead. `build.sh` disables it and fixes brightness at 80%.
+- The display **is** touch-capable (CST816S), even though stock Prospector
+  ignores it. `prospector_scanner_touch.conf` enables swipe between layouts;
+  check RAM first, the non-touch build already uses 86%.
 - **Sticky `&to` layer keys** (`u_to_U_*`, double-tap) can strand you on a layer,
   and changing layers while a mod is held leaves that modifier latched — every
   key then arrives as ⌥key. Restarting the keyboard clears it.
