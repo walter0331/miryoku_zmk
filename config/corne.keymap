@@ -4,3 +4,15 @@
 #include "../miryoku/custom_config.h"
 #include "../miryoku/mapping/42/corne.h"
 #include "../miryoku/miryoku.dtsi"
+
+// home row mods: don't fire as mods during fast typing
+&u_mt {
+  flavor = "balanced";
+  require-prior-idle-ms = <300>;
+};
+
+// thumb layer-taps: more slack for slow taps, allow tap-and-hold repeat
+&u_lt {
+  tapping-term-ms = <280>;
+  quick-tap-ms = <200>;
+};
