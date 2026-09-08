@@ -55,6 +55,11 @@ for target in ${*:-left right scanner}; do
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
     scanner) build scanner "$DONGLE_BOARD" prospector_scanner \
                -DZMK_CONFIG=/w/zmk-config-prospector/config $scanner_args ;;
+    # touch panel is fitted (CST816S) even though stock Prospector ignores it;
+    # adds swipe between layouts and a runtime brightness slider
+    scanner_touch) build scanner_touch "$DONGLE_BOARD" prospector_scanner \
+               -DZMK_CONFIG=/w/zmk-config-prospector/config $scanner_args \
+               -DEXTRA_CONF_FILE=/w/zmk-config-prospector/config/prospector_scanner_touch.conf ;;
     # flash to both halves to clear BLE bonds, then reflash the real firmware
     reset)   build reset "$BOARD" settings_reset ;;
     *) echo "unknown target: $target" >&2; exit 1 ;;

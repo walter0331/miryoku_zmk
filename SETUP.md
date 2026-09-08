@@ -77,9 +77,12 @@ Extra layer is QWERTY by default, so it is now identical to Base.
   "does not support a proximity sensor". With the sensor enabled in firmware but
   absent in hardware the backlight pins to `ALS_MIN_BRIGHTNESS=5` and the screen
   looks dead. `build.sh` disables it and fixes brightness at 80%.
-- The display **is** touch-capable (CST816S), even though stock Prospector
-  ignores it. `prospector_scanner_touch.conf` enables swipe between layouts;
-  check RAM first, the non-touch build already uses 86%.
+- The display **is** touch-capable (CST816S) and swipe works — verified on this
+  unit, even though beekeeb say Prospector does not use touch. Build it with
+  `./build.sh scanner_touch`: swipe between the four layouts, plus a settings
+  screen with a runtime brightness slider (the only way to change brightness
+  without a rebuild, since there is no light sensor). Fits with room to spare:
+  FLASH 85.9%, RAM 86.7%.
 - **Sticky `&to` layer keys** (`u_to_U_*`, double-tap) can strand you on a layer,
   and changing layers while a mod is held leaves that modifier latched — every
   key then arrives as ⌥key. Restarting the keyboard clears it.
