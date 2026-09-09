@@ -63,6 +63,9 @@ git -C "$ROOT/miryoku_zmk" diff --quiet 2>/dev/null || REV="$REV-dirty"
   https://github.com/zzeneg/zmk-raw-hid.git "$ROOT/zmk-raw-hid"
 [ -d "$ROOT/zmk-keypeek-layer-notifier" ] || git clone --depth 1 \
   https://github.com/srwi/zmk-keypeek-layer-notifier.git "$ROOT/zmk-keypeek-layer-notifier"
+# The KeyPeek alternative — see the dongle_layerreport target.
+[ -d "$ROOT/zmk-layer-report" ] || git clone --depth 1 \
+  https://github.com/lennyitb/zmk-layer-report.git "$ROOT/zmk-layer-report"
 [ -d "$ROOT/zmk/zephyr" ] || docker run --rm -v "$ROOT:/w" -w /w/zmk "$IMAGE" \
   sh -c 'west init -l app && west update && west zephyr-export'
 
@@ -172,6 +175,30 @@ for target in ${*:-left right scanner}; do
                -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
                -DCONFIG_PROSPECTOR_TOUCH_BRIGHTNESS=y \
                -DCONFIG_ZMK_STUDIO=y ;;
+    # The alternative to dongle_keypeek: lennyitb/zmk-layer-report, which sends
+    # a 4-byte vendor HID report (layer bitmask + modifiers) on every layer or
+    # modifier change, read by lennyitb/KeymapOverlay on the Mac.
+    #
+    # KNOWN LIMIT, from the module's own docs/state-report-spec.md: the report
+    # carries NO key positions and is not sent on a keypress. An overlay driven
+    # by it can switch layers and show held modifiers, but can never highlight
+    # the key you just pressed. Chosen with that understood.
+    #
+    # No shield and no Studio: module.yml declares only src/Kconfig, so
+    # CONFIG_ZMK_LAYER_REPORT=y is the whole firmware change. Deliberately does
+    # NOT pass -DKEYMAP_FILE, so it uses config/corne.keymap like the plain
+    # dongle target — the &studio_unlock combo in corne_dongle.keymap would not
+    # compile here, since that behavior does not exist without CONFIG_ZMK_STUDIO.
+    dongle_layerreport) build dongle_layerreport classic-touch-layerreport "$DONGLE_BOARD" \
+               "corne_dongle prospector_adapter" \
+               -DZMK_EXTRA_MODULES="/w/prospector-carrefinho;/w/zmk-layer-report" \
+               -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
+               -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=50 \
+               -DCONFIG_PROSPECTOR_STATUS_SCREEN_CLASSIC=y \
+               -DCONFIG_PROSPECTOR_RUNTIME_BRIGHTNESS=y \
+               -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
+               -DCONFIG_PROSPECTOR_TOUCH_BRIGHTNESS=y \
+               -DCONFIG_ZMK_LAYER_REPORT=y ;;
     right)   build right peripheral-niceview "$BOARD" "corne_right nice_view_adapter nice_view" ;;
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
     scanner) build scanner operator-fixed80 "$DONGLE_BOARD" prospector_scanner \
