@@ -4,6 +4,8 @@
 #   ./build.sh              # left + right + scanner
 #   ./build.sh left         # one target: left | right | scanner | reset
 #
+# Output: firmware/builds/<date>/<target>_<label>_<date>_<rev>.uf2
+#
 # Everything is composed at build time from four inputs; there is no repo
 # that merges them:
 #
@@ -40,6 +42,14 @@ DONGLE_BOARD=xiao_ble/nrf52840/zmk
 # Dated once here, so a build running past midnight does not split in two.
 OUT="$ROOT/firmware/builds/$(date +%Y-%m-%d)"
 
+# Every emitted .uf2 is named <target>_<label>_<date>_<rev>.uf2 — see
+# ../CLAUDE.md. A bare "dongle.uf2" says which target ran, not which firmware
+# you are holding, and the next run of the same target silently overwrites it
+# with something different. The rev makes two builds of one target on one day
+# distinguishable, which is exactly when a wrong Finder drag happens.
+REV=$(git -C "$ROOT/miryoku_zmk" rev-parse --short HEAD 2>/dev/null || echo nogit)
+git -C "$ROOT/miryoku_zmk" diff --quiet 2>/dev/null || REV="$REV-dirty"
+
 [ -d "$ROOT/zmk" ] || git clone --depth 1 https://github.com/zmkfirmware/zmk.git "$ROOT/zmk"
 [ -d "$ROOT/prospector-zmk-module" ] || git clone --depth 1 -b "$MODULE_TAG" \
   https://github.com/t-ogura/prospector-zmk-module.git "$ROOT/prospector-zmk-module"
@@ -54,16 +64,21 @@ OUT="$ROOT/firmware/builds/$(date +%Y-%m-%d)"
 # of the peak memory. Raise it if the host has headroom.
 JOBS=${JOBS:-4}
 
-build() { # name board shield extra-args...
-  name=$1 board=$2 shield=$3; shift 3
+build() { # name label board shield extra-args...
+  name=$1 label=$2 board=$3 shield=$4; shift 4
   docker run --rm -v "$ROOT:/w" -w /w/zmk/app \
     -e CMAKE_BUILD_PARALLEL_LEVEL="$JOBS" "$IMAGE" \
     west build -p -b "$board" -d "build/$name" -- \
       -DSHIELD="$shield" -DZMK_CONFIG=/w/miryoku_zmk/config \
       -DZMK_EXTRA_MODULES=/w/prospector-zmk-module "$@"
   mkdir -p "$OUT"
-  cp "$ROOT/zmk/app/build/$name/zephyr/zmk.uf2" "$OUT/$name.uf2"
-  echo "  -> $OUT/$name.uf2"
+  # The build DIRECTORY keeps the bare target name: SETUP.md points at
+  # zmk/app/build/<target>/build_info.yml as the ground truth for what a build
+  # actually merged, and incremental rebuilds key off it. Only the output file
+  # gets the descriptive name.
+  uf2="$OUT/${name}_${label}_$(date +%Y-%m-%d)_${REV}.uf2"
+  cp "$ROOT/zmk/app/build/$name/zephyr/zmk.uf2" "$uf2"
+  echo "  -> $uf2"
 }
 
 # The scanner's own settings are build-time only, so they live here rather
@@ -79,17 +94,17 @@ scanner_args="-DCONFIG_PROSPECTOR_DEFAULT_LAYOUT=2 \
 for target in ${*:-left right scanner}; do
   case $target in
     # scanner setup: left is central and broadcasts status for the Prospector
-    left)    build left  "$BOARD" "corne_left nice_view_adapter nice_view" $adv_args ;;
+    left)    build left  central-niceview "$BOARD" "corne_left nice_view_adapter nice_view" $adv_args ;;
     # dongle setup: the Prospector is central, so both halves are peripherals
     # and no status advertisement is needed (the dongle drives its own screen)
-    left_peripheral) build left_peripheral "$BOARD" \
+    left_peripheral) build left_peripheral peripheral-niceview "$BOARD" \
                "corne_left nice_view_adapter nice_view" \
                -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n ;;
     # The split pairing fix (latency 0 / supervision timeout 10s) lives in
     # config/corne_dongle.conf — merged for every corne_dongle build, so it
     # cannot be lost from the command line. See that file for why.
     # headless controller dongle — no display module; the tested fallback
-    dongle_bare) build dongle_bare "$DONGLE_BOARD" "corne_dongle" ;;
+    dongle_bare) build dongle_bare headless-nodisplay "$DONGLE_BOARD" "corne_dongle" ;;
     # no APDS9960 on this unit: the adapter shield selects it by default and
     # the driver then logs "sensor: device not ready", pinning the backlight
     # to 5%. Classic is the layout verified on hardware and shipped in
@@ -98,7 +113,7 @@ for target in ${*:-left right scanner}; do
     # FIXED_BRIGHTNESS is only the FIRST-BOOT value here: with
     # PROSPECTOR_RUNTIME_BRIGHTNESS a level saved by swiping is loaded from
     # settings and wins on every later boot.
-    dongle)  build dongle "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
+    dongle)  build dongle classic-touch-50pct "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
                -DZMK_EXTRA_MODULES=/w/prospector-carrefinho \
                -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
                -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=50 \
@@ -106,13 +121,13 @@ for target in ${*:-left right scanner}; do
                -DCONFIG_PROSPECTOR_RUNTIME_BRIGHTNESS=y \
                -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
                -DCONFIG_PROSPECTOR_TOUCH_BRIGHTNESS=y ;;
-    right)   build right "$BOARD" "corne_right nice_view_adapter nice_view" ;;
+    right)   build right peripheral-niceview "$BOARD" "corne_right nice_view_adapter nice_view" ;;
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
-    scanner) build scanner "$DONGLE_BOARD" prospector_scanner \
+    scanner) build scanner operator-fixed80 "$DONGLE_BOARD" prospector_scanner \
                -DZMK_CONFIG=/w/zmk-config-prospector/config $scanner_args ;;
     # touch panel is fitted (CST816S) even though stock Prospector ignores it;
     # adds swipe between layouts and a runtime brightness slider
-    scanner_touch) build scanner_touch "$DONGLE_BOARD" prospector_scanner \
+    scanner_touch) build scanner_touch operator-swipe "$DONGLE_BOARD" prospector_scanner \
                -DZMK_CONFIG=/w/zmk-config-prospector/config $scanner_args \
                -DEXTRA_CONF_FILE=/w/zmk-config-prospector/config/prospector_scanner_touch.conf ;;
     # same as dongle plus USB logging, for diagnosing touch/brightness on
@@ -129,7 +144,7 @@ for target in ${*:-left right scanner}; do
     # configured yet, so the dongle never enumerates and the keyboard is dead
     # until you reflash. ZMK_USB_LOGGING uses deferred mode for this reason.
     # Learned the hard way 2026-09-09.
-    dongle_log) build dongle_log "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
+    dongle_log) build dongle_log classic-touch-usblog "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
                -DZMK_EXTRA_MODULES=/w/prospector-carrefinho \
                -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
                -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=50 \
@@ -140,8 +155,8 @@ for target in ${*:-left right scanner}; do
                -DCONFIG_ZMK_USB_LOGGING=y -DCONFIG_INPUT_LOG_LEVEL_DBG=y ;;
 
     # flash to both halves to clear BLE bonds, then reflash the real firmware
-    reset)   build reset "$BOARD" settings_reset ;;
-    reset_dongle) build reset_dongle "$DONGLE_BOARD" settings_reset ;;
+    reset)   build reset clear-ble-bonds "$BOARD" settings_reset ;;
+    reset_dongle) build reset_dongle clear-ble-bonds "$DONGLE_BOARD" settings_reset ;;
     *) echo "unknown target: $target" >&2; exit 1 ;;
   esac
 done
