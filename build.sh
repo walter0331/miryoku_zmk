@@ -48,9 +48,16 @@ OUT="$ROOT/firmware/builds/$(date +%Y-%m-%d)"
 [ -d "$ROOT/zmk/zephyr" ] || docker run --rm -v "$ROOT:/w" -w /w/zmk "$IMAGE" \
   sh -c 'west init -l app && west update && west zephyr-export'
 
+# Cap compiler parallelism. Unset, ninja spawns one gcc per host CPU (12 here)
+# inside the Docker VM, and the peak killed Docker Desktop twice mid-build on a
+# machine already deep in swap. Four is roughly 2x the wall clock for a quarter
+# of the peak memory. Raise it if the host has headroom.
+JOBS=${JOBS:-4}
+
 build() { # name board shield extra-args...
   name=$1 board=$2 shield=$3; shift 3
-  docker run --rm -v "$ROOT:/w" -w /w/zmk/app "$IMAGE" \
+  docker run --rm -v "$ROOT:/w" -w /w/zmk/app \
+    -e CMAKE_BUILD_PARALLEL_LEVEL="$JOBS" "$IMAGE" \
     west build -p -b "$board" -d "build/$name" -- \
       -DSHIELD="$shield" -DZMK_CONFIG=/w/miryoku_zmk/config \
       -DZMK_EXTRA_MODULES=/w/prospector-zmk-module "$@"
@@ -88,10 +95,13 @@ for target in ${*:-left right scanner}; do
     # to 5%. Classic is the layout verified on hardware and shipped in
     # firmware/2026-09-09-dongle_stable_v1; swap the layout flag for
     # _FIELD / _OPERATOR to try the others (they differ by under 4 KB of RAM).
+    # FIXED_BRIGHTNESS is only the FIRST-BOOT value here: with
+    # PROSPECTOR_RUNTIME_BRIGHTNESS a level saved by swiping is loaded from
+    # settings and wins on every later boot.
     dongle)  build dongle "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
                -DZMK_EXTRA_MODULES=/w/prospector-carrefinho \
                -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
-               -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80 \
+               -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=50 \
                -DCONFIG_PROSPECTOR_STATUS_SCREEN_CLASSIC=y \
                -DCONFIG_PROSPECTOR_RUNTIME_BRIGHTNESS=y \
                -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
@@ -105,6 +115,30 @@ for target in ${*:-left right scanner}; do
     scanner_touch) build scanner_touch "$DONGLE_BOARD" prospector_scanner \
                -DZMK_CONFIG=/w/zmk-config-prospector/config $scanner_args \
                -DEXTRA_CONF_FILE=/w/zmk-config-prospector/config/prospector_scanner_touch.conf ;;
+    # same as dongle plus USB logging, for diagnosing touch/brightness on
+    # /dev/cu.usbmodem*. Not for daily use: logging costs flash and spams CDC.
+    #
+    # OBSERVER EFFECT: the per-event LOG_DBG in touch_brightness.c is slow over
+    # USB CDC, which backs up Zephyr's input queue until it discards reports
+    # ("input_report: Timeout discarded. No blocking in syswq"). Touch feels
+    # worse on THIS target than on the real one, where CONFIG_LOG is off and
+    # those calls compile away. Use it to find bugs, never to judge feel.
+    #
+    # Do NOT add CONFIG_LOG_MODE_IMMEDIATE here. With a USB CDC console it
+    # deadlocks at boot: the first log write blocks on an endpoint USB has not
+    # configured yet, so the dongle never enumerates and the keyboard is dead
+    # until you reflash. ZMK_USB_LOGGING uses deferred mode for this reason.
+    # Learned the hard way 2026-09-09.
+    dongle_log) build dongle_log "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
+               -DZMK_EXTRA_MODULES=/w/prospector-carrefinho \
+               -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
+               -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=50 \
+               -DCONFIG_PROSPECTOR_STATUS_SCREEN_CLASSIC=y \
+               -DCONFIG_PROSPECTOR_RUNTIME_BRIGHTNESS=y \
+               -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
+               -DCONFIG_PROSPECTOR_TOUCH_BRIGHTNESS=y \
+               -DCONFIG_ZMK_USB_LOGGING=y -DCONFIG_INPUT_LOG_LEVEL_DBG=y ;;
+
     # flash to both halves to clear BLE bonds, then reflash the real firmware
     reset)   build reset "$BOARD" settings_reset ;;
     reset_dongle) build reset_dongle "$DONGLE_BOARD" settings_reset ;;
