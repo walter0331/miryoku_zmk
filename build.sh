@@ -81,12 +81,14 @@ for target in ${*:-left right scanner}; do
     dongle_bare) build dongle_bare "$DONGLE_BOARD" "corne_dongle" ;;
     # no APDS9960 on this unit: the adapter shield selects it by default and
     # the driver then logs "sensor: device not ready", pinning the backlight
-    # to 5%. Operator is the same layout the scanner build uses.
+    # to 5%. Classic is the layout verified on hardware and shipped in
+    # firmware/2026-09-09-dongle_stable_v1; swap the layout flag for
+    # _FIELD / _OPERATOR to try the others (they differ by under 4 KB of RAM).
     dongle)  build dongle "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
                -DZMK_EXTRA_MODULES=/w/prospector-carrefinho \
                -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
                -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80 \
-               -DCONFIG_PROSPECTOR_STATUS_SCREEN_OPERATOR=y ;;
+               -DCONFIG_PROSPECTOR_STATUS_SCREEN_CLASSIC=y ;;
     right)   build right "$BOARD" "corne_right nice_view_adapter nice_view" ;;
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
     scanner) build scanner "$DONGLE_BOARD" prospector_scanner \
