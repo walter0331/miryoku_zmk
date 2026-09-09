@@ -63,9 +63,15 @@ git -C "$ROOT/miryoku_zmk" diff --quiet 2>/dev/null || REV="$REV-dirty"
   https://github.com/zzeneg/zmk-raw-hid.git "$ROOT/zmk-raw-hid"
 [ -d "$ROOT/zmk-keypeek-layer-notifier" ] || git clone --depth 1 \
   https://github.com/srwi/zmk-keypeek-layer-notifier.git "$ROOT/zmk-keypeek-layer-notifier"
-# The KeyPeek alternative — see the dongle_layerreport target.
+# The KeyPeek alternative — see the dongle_layerreport target. Needs a local
+# patch: upstream's USB transport asks for a HID device name that cannot exist,
+# so the 0xFF42 interface never enumerates. Applied on clone, and re-applied
+# idempotently in case the clone is refreshed.
 [ -d "$ROOT/zmk-layer-report" ] || git clone --depth 1 \
   https://github.com/lennyitb/zmk-layer-report.git "$ROOT/zmk-layer-report"
+grep -q '"HID_1"' "$ROOT/zmk-layer-report/src/usb_hid.c" 2>/dev/null || \
+  git -C "$ROOT/zmk-layer-report" apply \
+    "$ROOT/miryoku_zmk/tools/patches/zmk-layer-report-hid-device.patch"
 [ -d "$ROOT/zmk/zephyr" ] || docker run --rm -v "$ROOT:/w" -w /w/zmk "$IMAGE" \
   sh -c 'west init -l app && west update && west zephyr-export'
 
@@ -198,7 +204,8 @@ for target in ${*:-left right scanner}; do
                -DCONFIG_PROSPECTOR_RUNTIME_BRIGHTNESS=y \
                -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
                -DCONFIG_PROSPECTOR_TOUCH_BRIGHTNESS=y \
-               -DCONFIG_ZMK_LAYER_REPORT=y ;;
+               -DCONFIG_ZMK_LAYER_REPORT=y \
+               -DCONFIG_USB_HID_DEVICE_COUNT=2 ;;
     right)   build right peripheral-niceview "$BOARD" "corne_right nice_view_adapter nice_view" ;;
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
     scanner) build scanner operator-fixed80 "$DONGLE_BOARD" prospector_scanner \

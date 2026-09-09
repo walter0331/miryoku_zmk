@@ -1,0 +1,26 @@
+diff --git a/src/usb_hid.c b/src/usb_hid.c
+index 6b3621b..29e379e 100644
+--- a/src/usb_hid.c
++++ b/src/usb_hid.c
+@@ -17,7 +17,20 @@ static const struct hid_ops ops = {
+ };
+ 
+ static int layer_report_usb_init(void) {
+-    hid_dev = device_get_binding("HID_LAYER_REPORT");
++    /* LOCAL FIX -- see miryoku_zmk/tools/patches/zmk-layer-report-hid-device.patch
++     *
++     * Upstream asks for "HID_LAYER_REPORT", a device name that exists nowhere:
++     * not in this module, not in Zephyr, not in ZMK. Zephyr names USB HID
++     * devices CONFIG_USB_HID_DEVICE_NAME "_" <n> (zephyr subsys/usb/device/
++     * class/hid/core.c:737), so the only names that can exist are HID_0,
++     * HID_1, ... ZMK's keyboard takes HID_0 (zmk/app/src/usb_hid.c:239), so
++     * the layer report belongs on HID_1 -- which also needs
++     * CONFIG_USB_HID_DEVICE_COUNT=2, set on the build target.
++     *
++     * Unpatched: device_get_binding() returns NULL, this init returns -ENODEV,
++     * and the 0xFF42 interface never enumerates. Silently, because a normal
++     * build has CONFIG_LOG off, so the LOG_ERR below goes nowhere. */
++    hid_dev = device_get_binding("HID_1");
+     if (hid_dev == NULL) {
+         LOG_ERR("cannot get HID device binding");
+         return -ENODEV;
