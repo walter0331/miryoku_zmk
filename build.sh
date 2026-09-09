@@ -18,9 +18,13 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=zmkfirmware/zmk-build-arm:stable
 MODULE_TAG=v2.2.3
-# carrefinho's module is the only one with a dongle-mode display; its main
-# branch targets ZMK v0.3/Zephyr 3.5, so ZMK main needs this branch.
-CARREFINHO_BRANCH=feat/new-status-screens
+# The dongle-role display module. Our fork of carrefinho's, whose upstream
+# feat/new-status-screens branch is the only one that builds against ZMK main
+# (its own main targets ZMK v0.3/Zephyr 3.5). The fork adds runtime brightness,
+# idle dimming and touch control — see docs/dongle-display-design.md. The
+# directory keeps its original name so existing clones keep working.
+DISPLAY_MODULE_REPO=git@github-walter0331:walter0331/prospector-zmk-module.git
+DISPLAY_MODULE_BRANCH=walter/dongle-touch-brightness
 
 # nice!nano v2 is "nice_nano/nrf52840/zmk" on ZMK main: hardware-model-v2
 # renamed it, and the old "nice_nano_v2" no longer resolves. Revision
@@ -39,8 +43,8 @@ OUT="$ROOT/firmware/builds/$(date +%Y-%m-%d)"
 [ -d "$ROOT/zmk" ] || git clone --depth 1 https://github.com/zmkfirmware/zmk.git "$ROOT/zmk"
 [ -d "$ROOT/prospector-zmk-module" ] || git clone --depth 1 -b "$MODULE_TAG" \
   https://github.com/t-ogura/prospector-zmk-module.git "$ROOT/prospector-zmk-module"
-[ -d "$ROOT/prospector-carrefinho" ] || git clone --depth 1 -b "$CARREFINHO_BRANCH" \
-  https://github.com/carrefinho/prospector-zmk-module.git "$ROOT/prospector-carrefinho"
+[ -d "$ROOT/prospector-carrefinho" ] || git clone --depth 1 -b "$DISPLAY_MODULE_BRANCH" \
+  "$DISPLAY_MODULE_REPO" "$ROOT/prospector-carrefinho"
 [ -d "$ROOT/zmk/zephyr" ] || docker run --rm -v "$ROOT:/w" -w /w/zmk "$IMAGE" \
   sh -c 'west init -l app && west update && west zephyr-export'
 
@@ -88,7 +92,10 @@ for target in ${*:-left right scanner}; do
                -DZMK_EXTRA_MODULES=/w/prospector-carrefinho \
                -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
                -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80 \
-               -DCONFIG_PROSPECTOR_STATUS_SCREEN_CLASSIC=y ;;
+               -DCONFIG_PROSPECTOR_STATUS_SCREEN_CLASSIC=y \
+               -DCONFIG_PROSPECTOR_RUNTIME_BRIGHTNESS=y \
+               -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
+               -DCONFIG_PROSPECTOR_TOUCH_BRIGHTNESS=y ;;
     right)   build right "$BOARD" "corne_right nice_view_adapter nice_view" ;;
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
     scanner) build scanner "$DONGLE_BOARD" prospector_scanner \

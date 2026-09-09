@@ -7,7 +7,12 @@ brightness adjustment, and a screen that goes dark when Walter is not there.
 Driver: "my eyes are not so good" (brightness) and "I don't want the screen on
 when I'm sleeping" (idle).
 
-**Status: gate PASSED 2026-09-09, nothing else built.** §6 ran on hardware:
+**Status: gate PASSED and all six steps of §7 BUILT 2026-09-09, not yet
+hardware-tested.** Code lives in the fork
+`walter0331/prospector-zmk-module`, branch `walter/dongle-touch-brightness`
+(`fbf04cb`). Measured cost for all six features on the Classic layout:
+**+1428 B flash, +128 B RAM** — 67.94% / 85.06%, against a 5-8 KB estimate.
+See §9 for what remains unverified. §6 ran on hardware:
 `prospector_dongle` with shields `corne_dongle prospector_adapter` (Classic
 layout) pairs with both halves and renders on screen. The design below stands.
 
@@ -162,6 +167,28 @@ changes across a reflash; re-enumerate rather than reusing a stale handle).
    `ZMK_IDLE_TIMEOUT=300000`.
 6. **Mac-sleep off** — `zmk_usb_conn_state_changed` +
    `zmk_usb_get_status() == USB_DC_SUSPEND` → 0; resume restores.
+
+## 9. Built, and what is still unverified
+
+Everything in §7 is written, compiles clean, and is committed. **None of it has
+run on hardware.** Flash `firmware/builds/2026-09-09/dongle_touch_brightness.uf2`
+and check, in this order — it isolates failures fastest:
+
+1. screen lit at 80% → the new owner replaced the stock `SYS_INIT` without both
+   racing over the same PWM channel
+2. swipe up/down → 10% per swipe
+3. idle 5 min → 1%, then type → back to *your* level, not the build default
+4. sleep the Mac → backlight fully off
+5. set a level, unplug, replug → comes back at your level
+
+**Most likely to be wrong: swipe direction (3 is a coin flip).** The panel is
+mounted rotated and the axis mapping was derived from t-ogura's transform for a
+*different* rotation. One subtraction in `touch_brightness.c` is marked as the
+thing to flip.
+
+**Second most likely: step 4.** A monitor's USB hub may keep the port powered
+through host sleep and never deliver `USB_DC_SUSPEND`. If it never fires, fall
+back to the two-stage timeout in §8.
 
 ## 8. Open risks
 
