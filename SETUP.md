@@ -140,6 +140,53 @@ ZMK prefers the shortest shield base name, so `corne_dongle` resolves to
 `config/corne.keymap` and the dongle's own keymap is otherwise ignored entirely.
 See `docs/lessons.md`, "Which keymap a build actually uses".
 
+### Pick the right serial port — this is the one that will waste your evening
+
+KeyPeek's device dropdown shows **four identical-looking entries**:
+
+    Corne Dongle [/dev/cu.usbmodem1201]  (ZMK Serial, 1D50:615E)
+    Corne Dongle [/dev/cu.usbmodem1204]  (ZMK Serial, 1D50:615E)   <-- THIS ONE
+    Corne Dongle [/dev/tty.usbmodem1201] (ZMK Serial, 1D50:615E)
+    Corne Dongle [/dev/tty.usbmodem1204] (ZMK Serial, 1D50:615E)
+
+Same name, same VID:PID. They are two CDC interfaces x two macOS node types.
+
+- **`tty.*` is wrong** — dial-in nodes block waiting for carrier detect. Use `cu.*`.
+- **Only the HIGHER-numbered port is the Studio RPC endpoint.** `1201` is the
+  other CDC and answers nothing.
+
+Choosing `1201` produces this, which is a **lie about the cause**:
+
+> The keyboard did not respond over USB. ZMK disables this interface while the
+> keyboard sends its keystrokes elsewhere. Switch the keyboard's output to USB
+> (the '&out' key) and try again.
+
+Output was on USB the whole time. The app blames the transport it knows about
+when nothing answers the port you handed it. Chasing `&out` on that message
+cost hours and stranded the keyboard once (holding a modifier across a layer
+change latches it; unplug the dongle to clear it).
+
+### Overlay settings that matter
+
+The overlay is **layer-driven, not hotkey-driven** — there is no shortcut:
+
+| State | Behaviour |
+|---|---|
+| Holding a layer | visible, and stays up as long as you hold |
+| Base layer | visible for `Display duration`, then fades |
+| A layer you unchecked | never visible |
+
+**Uncheck "Layer 0" in Settings > Theme.** That checkbox is a visibility mask
+(`keyboard.rs:49-53`), not just a colour. Unchecked, the overlay never appears
+during normal typing and only shows when you hold a thumb — which is the only
+time you want it. This matters more than size or duration.
+
+The overlay is full-screen but **mouse-passthrough**, so it never blocks
+clicking; it only captures clicks while the Settings window is open.
+
+Settings live in `~/Library/Application Support/dev.srwi.KeyPeek/settings.ini`
+and are read only at startup — edit them there and you must restart the app.
+
 ## Bluetooth
 
 Profiles: hold left outer thumb (Media) + tap `M` `,` `.` `/` for 0-3.

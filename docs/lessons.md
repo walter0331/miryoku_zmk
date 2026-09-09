@@ -99,6 +99,45 @@ This also explains carrefinho issue #22, closed with no fix.
 - Keeping the lock is a real choice, not ceremony: unlocked, any process that
   can open `/dev/cu.usbmodem*` can rewrite the keymap over Studio RPC.
 
+### An error message names the cause it knows, not the cause you have
+
+KeyPeek, on failing to reach ZMK Studio, says:
+
+> The keyboard did not respond over USB. ZMK disables this interface while the
+> keyboard sends its keystrokes elsewhere. Switch the keyboard's output to USB.
+
+The output was on USB throughout. The real cause was that its device dropdown
+lists **two CDC interfaces x two macOS node types = four entries with identical
+names and identical VID:PID**, and only the higher-numbered `cu.*` port is the
+Studio RPC endpoint. Selecting the other one means nothing answers, and the app
+reports the only USB failure it has a string for.
+
+- **`cu.*` vs `tty.*`**: `tty.*` are dial-in nodes that block on carrier detect.
+  Host tools want `cu.*`. A dropdown offering both is offering you a trap.
+- I acted on that message **three times**, and one attempt (hold thumb + `F` +
+  `N`, a modifier held across a layer change) latched a modifier and left the
+  keyboard typing garbage. My own rule says stop at 2-3 identical failures and
+  re-validate the premise; I did not, because each retry felt like a new variant
+  rather than the same assumption.
+- The check that would have caught it in one step, and eventually did: **the
+  user was typing to me the whole time.** If output were really BLE, keystrokes
+  could only arrive over a BLE link. The contradiction was in front of me from
+  the first occurrence.
+
+### Verifying a USB interface exists
+
+- `ioreg -r -c IOHIDDevice -l | grep -c 65376` is **not** a check. It matches
+  any device on the machine. Filter by `"VendorID" = <vid>` first, or you will
+  report another device's usage page as your keyboard's.
+- `PrimaryUsagePage` shows only the FIRST collection. A vendor report added to
+  an existing descriptor will not appear there — read `DeviceUsagePairs`, which
+  lists all of them.
+- USB descriptors are static. An interface either enumerates or it does not;
+  it is never "disabled by a setting". So a missing usage page means the wrong
+  firmware is flashed, full stop — do not go looking for a mode to toggle.
+- A useful shape for these checks, since `ioreg` output is nested:
+  `ioreg -r -c IOHIDDevice -l | tr '\n' '\r' | tr '+' '\n' | grep 'VendorID" = 7504'`
+
 ### Activity, sleep, and the display
 
 - A keypress on a BLE **peripheral** does reset the **central's** activity timer:
