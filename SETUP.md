@@ -10,8 +10,18 @@ workflows in this fork are **not** used and would fail (see Gotchas).
     cd miryoku_zmk && git checkout corne-qwerty-tuning
     ./build.sh            # clones deps on first run, ~2GB, then builds
 
-Outputs land in `out/`: `left.uf2`, `right.uf2`, `scanner.uf2`.
+Outputs land in `../firmware/builds/<YYYY-MM-DD>/` — `left.uf2`, `right.uf2`,
+`scanner.uf2`. That is the folder you drag from in Finder.
 `./build.sh reset` builds the settings_reset image.
+
+Older `out/` copies, if any survive, are stale — build.sh no longer writes there.
+
+**Two kinds of folder under `../firmware/`, do not mix them:**
+
+| | what | rule |
+|---|---|---|
+| `builds/<date>/` | whatever the last build emitted | disposable, overwritten freely |
+| `<date>-<name>_v<n>/` | a curated set with `MANIFEST.md` + sha256 + source commit | **immutable** — adding a file makes the manifest lie |
 
 ## How the firmware is composed
 
@@ -69,9 +79,11 @@ Extra layer is QWERTY by default, so it is now identical to Base.
 - **`nice_nano_v2` does not exist on ZMK main.** hardware-model-v2 renamed it;
   use `nice_nano/nrf52840/zmk` (revision defaults to 2.0.0). This is why the
   stock `build-example-*` workflows in this fork fail.
-- **`carrefinho/prospector-zmk-module` targets ZMK v0.3 / Zephyr 3.5.** We use
-  `t-ogura/…` v2.2.3, which supports ZMK main. Relevant if dongle mode is ever
-  revisited.
+- **Two Prospector modules, two branches.** carrefinho's `main` targets ZMK v0.3
+  / Zephyr 3.5, but its `feat/new-status-screens` branch builds against ZMK main
+  — that is the one `build.sh` clones, and the only one with a dongle-role
+  display. t-ogura's v2.2.3 (scanner-role, has touch) also builds against ZMK
+  main. See the vocabulary table under Dongle mode.
 - **No ambient light sensor.** The beekeeb pre-soldered Prospector (XIAO nRF52840
   + Waveshare 1.69" touch LCD, 240x280) ships without an APDS9960 — its case
   "does not support a proximity sensor". With the sensor enabled in firmware but
@@ -112,6 +124,26 @@ left half is local and the right arrives over BLE.
 
     ./build.sh dongle left_peripheral right reset reset_dongle
 
+#### "Prospector" means three things — say which
+
+Most of the confusion in this project comes from one word covering a unit, two
+modules and two roles. The roles are the part that matters:
+
+| Term | Means |
+|---|---|
+| **the unit** | the hardware: XIAO nRF52840 + Waveshare 1.69" 240x280 ST7789 + CST816S touch. No APDS9960. |
+| **scanner-role** | passive BLE observer. Shows another keyboard's *advertised* status. t-ogura's module. Has touch. |
+| **dongle-role** | the split central. Runs the keymap, shows its own *live* state. carrefinho's module. No touch. |
+
+**One unit cannot be both.** A radio cannot receive its own advertisements, so
+scanner-role needs a keyboard advertising elsewhere. Choosing dongle-role means
+the t-ogura touch build does not apply — its `PROSPECTOR_MODE_SCANNER` is a
+standalone bool with no central counterpart on any of its 15 branches.
+
+The two modules are not rivals: t-ogura's LICENSE reads "Copyright (c) 2024
+carrefinho (Original Prospector Module)" — it is a fork. Both MIT, so code moves
+between them freely.
+
 | Target | Board | Notes |
 |---|---|---|
 | `dongle` | `xiao_ble/nrf52840/zmk` | shields `corne_dongle prospector_adapter`, carrefinho module |
@@ -139,6 +171,16 @@ The five BLE profiles now belong to the dongle.
   module: undefined Kconfig symbols are a hard error, not a warning. The
   status-advertisement settings therefore live in `build.sh` as per-target
   flags, not in the conf.
+- **`config/<shield>.conf` works, and is the right home for shield-only
+  symbols.** `config/corne_dongle.conf` is merged for exactly the builds whose
+  SHIELD list contains `corne_dongle`, so symbols that exist only under
+  `ZMK_SPLIT_ROLE_CENTRAL` can live there without breaking the halves. This is
+  where the split pairing fix lives. Do not confuse it with the shield's own
+  `Kconfig.defconfig`: ZMK's `default` values are parsed first and win there, so
+  `ZMK_SPLIT_BLE_PREF_LATENCY`/`_TIMEOUT` set in `Kconfig.defconfig` are
+  silently ignored (`BT_MAX_CONN`/`BT_MAX_PAIRED` do take effect).
+  To check what a build actually merged, read the `kconfig: files:` list in
+  `../zmk/app/build/<target>/build_info.yml` — that is ground truth, not a guess.
 - `ZMK_SPLIT_ROLE_CENTRAL` is per-setup for the same shield, so it is a
   per-target flag too, not `config/corne_left.conf`.
 - Peripherals report already-transformed key positions (`corne_right.overlay`

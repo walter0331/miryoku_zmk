@@ -28,6 +28,14 @@ CARREFINHO_BRANCH=feat/new-status-screens
 BOARD=nice_nano/nrf52840/zmk
 DONGLE_BOARD=xiao_ble/nrf52840/zmk
 
+# Fresh builds go under kbrd/firmware/builds/<date>/ — that is what you drag
+# from in Finder (a terminal cp to a removable volume is blocked by macOS TCC).
+# Kept separate from the curated snapshot folders beside it
+# (firmware/<date>-<name>_v<n>/), which carry a MANIFEST.md of sha256s and must
+# stay exactly as manifested — never drop a build into one of those.
+# Dated once here, so a build running past midnight does not split in two.
+OUT="$ROOT/firmware/builds/$(date +%Y-%m-%d)"
+
 [ -d "$ROOT/zmk" ] || git clone --depth 1 https://github.com/zmkfirmware/zmk.git "$ROOT/zmk"
 [ -d "$ROOT/prospector-zmk-module" ] || git clone --depth 1 -b "$MODULE_TAG" \
   https://github.com/t-ogura/prospector-zmk-module.git "$ROOT/prospector-zmk-module"
@@ -42,9 +50,9 @@ build() { # name board shield extra-args...
     west build -p -b "$board" -d "build/$name" -- \
       -DSHIELD="$shield" -DZMK_CONFIG=/w/miryoku_zmk/config \
       -DZMK_EXTRA_MODULES=/w/prospector-zmk-module "$@"
-  mkdir -p "$ROOT/miryoku_zmk/out"
-  cp "$ROOT/zmk/app/build/$name/zephyr/zmk.uf2" "$ROOT/miryoku_zmk/out/$name.uf2"
-  echo "  -> out/$name.uf2"
+  mkdir -p "$OUT"
+  cp "$ROOT/zmk/app/build/$name/zephyr/zmk.uf2" "$OUT/$name.uf2"
+  echo "  -> $OUT/$name.uf2"
 }
 
 # The scanner's own settings are build-time only, so they live here rather
@@ -66,8 +74,19 @@ for target in ${*:-left right scanner}; do
     left_peripheral) build left_peripheral "$BOARD" \
                "corne_left nice_view_adapter nice_view" \
                -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=n ;;
+    # The split pairing fix (latency 0 / supervision timeout 10s) lives in
+    # config/corne_dongle.conf — merged for every corne_dongle build, so it
+    # cannot be lost from the command line. See that file for why.
+    # headless controller dongle — no display module; the tested fallback
+    dongle_bare) build dongle_bare "$DONGLE_BOARD" "corne_dongle" ;;
+    # no APDS9960 on this unit: the adapter shield selects it by default and
+    # the driver then logs "sensor: device not ready", pinning the backlight
+    # to 5%. Operator is the same layout the scanner build uses.
     dongle)  build dongle "$DONGLE_BOARD" "corne_dongle prospector_adapter" \
-               -DZMK_EXTRA_MODULES=/w/prospector-carrefinho ;;
+               -DZMK_EXTRA_MODULES=/w/prospector-carrefinho \
+               -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
+               -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80 \
+               -DCONFIG_PROSPECTOR_STATUS_SCREEN_OPERATOR=y ;;
     right)   build right "$BOARD" "corne_right nice_view_adapter nice_view" ;;
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
     scanner) build scanner "$DONGLE_BOARD" prospector_scanner \

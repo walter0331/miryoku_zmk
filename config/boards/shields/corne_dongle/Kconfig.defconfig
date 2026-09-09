@@ -13,11 +13,12 @@ config ZMK_SPLIT_ROLE_CENTRAL
 config ZMK_SPLIT_BLE_CENTRAL_PERIPHERALS
     default 2
 
-# host profiles + two peripherals
+# two peripherals + one host connection. 7 also works; 3 matches a
+# known-good community dongle config, so keep the tested value.
 config BT_MAX_CONN
-    default 7
+    default 3
 
 config BT_MAX_PAIRED
-    default 7
+    default 3
 
 endif
