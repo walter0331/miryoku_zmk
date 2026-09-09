@@ -36,6 +36,14 @@ There is no repo that merges everything. ZMK composes at build time:
 
 `build.sh` is the only place that composition is written down.
 
+**Dependencies are cloned by branch, not by commit** (`--depth 1` on `main` /
+`v2.2.3` / `feat/new-status-screens`). So a build is reproducible *today* but
+not pinned: when upstream moves, so does your firmware. Each
+`firmware/<date>-*/MANIFEST.md` records the exact SHAs its images were built
+from — to reproduce an old set, `git checkout <sha>` in `../zmk` and the module
+clone before running `build.sh`. If a build ever needs to be permanently
+reproducible, pin the SHAs in `build.sh` rather than relying on the manifest.
+
 ## Flashing
 
 Double-tap reset on the half → `NICENANO` mounts → drag the `.uf2` on.
