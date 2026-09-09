@@ -55,6 +55,14 @@ git -C "$ROOT/miryoku_zmk" diff --quiet 2>/dev/null || REV="$REV-dirty"
   https://github.com/t-ogura/prospector-zmk-module.git "$ROOT/prospector-zmk-module"
 [ -d "$ROOT/prospector-carrefinho" ] || git clone --depth 1 -b "$DISPLAY_MODULE_BRANCH" \
   "$DISPLAY_MODULE_REPO" "$ROOT/prospector-carrefinho"
+# KeyPeek needs two more modules: zzeneg's Raw HID transport and srwi's layer
+# notifier that writes to it. Both are tiny and central-only (each Kconfig is
+# "depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL"), so they touch the dongle
+# build alone. Cloned by branch like the rest — see SETUP.md on pinning.
+[ -d "$ROOT/zmk-raw-hid" ] || git clone --depth 1 \
+  https://github.com/zzeneg/zmk-raw-hid.git "$ROOT/zmk-raw-hid"
+[ -d "$ROOT/zmk-keypeek-layer-notifier" ] || git clone --depth 1 \
+  https://github.com/srwi/zmk-keypeek-layer-notifier.git "$ROOT/zmk-keypeek-layer-notifier"
 [ -d "$ROOT/zmk/zephyr" ] || docker run --rm -v "$ROOT:/w" -w /w/zmk "$IMAGE" \
   sh -c 'west init -l app && west update && west zephyr-export'
 
@@ -66,9 +74,13 @@ JOBS=${JOBS:-4}
 
 build() { # name label board shield extra-args...
   name=$1 label=$2 board=$3 shield=$4; shift 4
+  # A Zephyr snippet has to precede "--", so it cannot ride in with the -D
+  # flags. Set SNIPPET=<name> on the line before the build call; it is CONSUMED
+  # here, so it can never leak into the next target of a multi-target run.
+  snippet=$SNIPPET; SNIPPET=
   docker run --rm -v "$ROOT:/w" -w /w/zmk/app \
     -e CMAKE_BUILD_PARALLEL_LEVEL="$JOBS" "$IMAGE" \
-    west build -p -b "$board" -d "build/$name" -- \
+    west build -p -b "$board" ${snippet:+-S "$snippet"} -d "build/$name" -- \
       -DSHIELD="$shield" -DZMK_CONFIG=/w/miryoku_zmk/config \
       -DZMK_EXTRA_MODULES=/w/prospector-zmk-module "$@"
   mkdir -p "$OUT"
@@ -121,6 +133,45 @@ for target in ${*:-left right scanner}; do
                -DCONFIG_PROSPECTOR_RUNTIME_BRIGHTNESS=y \
                -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
                -DCONFIG_PROSPECTOR_TOUCH_BRIGHTNESS=y ;;
+    # Everything the dongle target has, plus what KeyPeek needs to drive an
+    # on-screen keymap overlay on the Mac: ZMK Studio (KeyPeek reads the keymap
+    # and the physical layout off the device over Studio RPC, which is why
+    # Miryoku's macro keymap is a non-issue for it) and Raw HID (live layer
+    # events).
+    #
+    # ZMK Studio "requires significantly more RAM" (zmk docs/features/studio.md).
+    # Measured here, Studio + Raw HID cost 18,682 B of RAM and 27,076 B of
+    # flash: 49.17% -> 56.30% RAM, 67.95% -> 71.30% flash.
+    #
+    # That is LESS than the LVGL buffer fix freed, so it would have linked
+    # before that change too, at ~92% RAM. The fix is what makes this
+    # comfortable rather than what makes it possible. If this target ever stops
+    # linking, the LVGL buffers in config/corne_dongle.conf are still the first
+    # budget to look at.
+    #
+    # corne_dongle.overlay already sets zmk,physical-layout, which Studio
+    # requires — no extra devicetree work was needed.
+    # KEYMAP_FILE is set explicitly and that is NOT optional. ZMK picks the
+    # keymap in post_boards_shields.cmake by splitting each shield name on "_"
+    # and trying the SHORTER base names FIRST (corne_dongle -> "corne"), so
+    # config/corne.keymap wins over any corne_dongle.keymap, wherever it sits.
+    # Every dongle build has silently been using the halves' keymap. Harmless
+    # while the two files are identical Miryoku, fatal the moment the dongle
+    # needs a binding the halves must not have — like &studio_unlock, which
+    # does not exist in a build without CONFIG_ZMK_STUDIO and would break the
+    # left/right builds outright.
+    dongle_keypeek) SNIPPET=studio-rpc-usb-uart
+             build dongle_keypeek classic-touch-keypeek "$DONGLE_BOARD" \
+               "corne_dongle prospector_adapter raw_hid_adapter" \
+               -DKEYMAP_FILE=/w/miryoku_zmk/config/boards/shields/corne_dongle/corne_dongle.keymap \
+               -DZMK_EXTRA_MODULES="/w/prospector-carrefinho;/w/zmk-raw-hid;/w/zmk-keypeek-layer-notifier" \
+               -DCONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=n \
+               -DCONFIG_PROSPECTOR_FIXED_BRIGHTNESS=50 \
+               -DCONFIG_PROSPECTOR_STATUS_SCREEN_CLASSIC=y \
+               -DCONFIG_PROSPECTOR_RUNTIME_BRIGHTNESS=y \
+               -DCONFIG_ZMK_IDLE_TIMEOUT=300000 \
+               -DCONFIG_PROSPECTOR_TOUCH_BRIGHTNESS=y \
+               -DCONFIG_ZMK_STUDIO=y ;;
     right)   build right peripheral-niceview "$BOARD" "corne_right nice_view_adapter nice_view" ;;
     # ponytail: scanner conf lives in walter0331/zmk-config-prospector
     scanner) build scanner operator-fixed80 "$DONGLE_BOARD" prospector_scanner \

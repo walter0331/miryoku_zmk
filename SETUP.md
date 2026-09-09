@@ -109,6 +109,37 @@ Extra layer is QWERTY by default, so it is now identical to Base.
 - `U_BOOT` sits on `Q` (or `P` on Fun): a double-tap there enters the bootloader.
 - Scanner shows max 7 layers; Miryoku defines 10.
 
+## Layer overlay on the Mac (KeyPeek)
+
+`./build.sh dongle_keypeek` builds the normal dongle firmware plus ZMK Studio
+and Raw HID, so [KeyPeek](https://github.com/srwi/keypeek) can draw a live
+keymap overlay on screen. RAM 56.5%, FLASH 71.5% — it fits because
+`LV_Z_VDB_SIZE=15` freed 94 KB (see `config/corne_dongle.conf`).
+
+KeyPeek reads the keymap **off the device** over Studio RPC, so Miryoku's
+macro-generated keymap needs no preprocessing. That is the whole reason it was
+chosen over `lennyitb/zmk-layer-report`, whose companion app parses a `.keymap`
+file and chokes on our three `#include` lines.
+
+    ./build.sh dongle_keypeek     # firmware
+    # app: kbrd/keypeek/target/release/bundle/osx/KeyPeek.app
+
+The app is **built locally on purpose.** The published macOS build is ad-hoc
+signed and unnotarized, so Gatekeeper rejects it — but a locally compiled binary
+carries no `com.apple.quarantine` attribute and is never assessed. Moving it to
+another Mac must preserve that: `scp`, `rsync` or a USB drive are fine, AirDrop
+and browser downloads are not.
+
+**Studio is locked on every connect.** Press the two **top-row outer keys**
+together — positions 0 and 11, the dead keys flanking `Q` and `P` — then click
+Connect. The combo is in `config/boards/shields/corne_dongle/corne_dongle.keymap`.
+It re-locks on disconnect and after 600 s idle.
+
+**`dongle_keypeek` is the only target that passes `-DKEYMAP_FILE`,** and it must:
+ZMK prefers the shortest shield base name, so `corne_dongle` resolves to
+`config/corne.keymap` and the dongle's own keymap is otherwise ignored entirely.
+See `docs/lessons.md`, "Which keymap a build actually uses".
+
 ## Bluetooth
 
 Profiles: hold left outer thumb (Media) + tap `M` `,` `.` `/` for 0-3.

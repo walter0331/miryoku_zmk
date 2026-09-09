@@ -13,3 +13,28 @@
   tapping-term-ms = <280>;
   quick-tap-ms = <200>;
 };
+
+/ {
+  combos {
+    compatible = "zmk,combos";
+
+    // ZMK Studio locks itself on every connect (CONFIG_ZMK_STUDIO_LOCKING is
+    // implied by STUDIO_RPC, with LOCK_ON_DISCONNECT=y). Miryoku binds
+    // &studio_unlock nowhere, so without this there is NO key sequence that
+    // can unlock it and KeyPeek's "press the unlock combination" prompt is
+    // unsatisfiable.
+    //
+    // Positions 0 and 11 are the top-row outer keys. Miryoku leaves both as
+    // &none on all ten layers, so this costs no binding. They are also at
+    // opposite corners, which makes an accidental press unlikely.
+    //
+    // Keeping the lock rather than setting STUDIO_LOCKING=n is deliberate:
+    // unlocked, any process that can open /dev/cu.usbmodem* can rewrite the
+    // keymap over Studio RPC.
+    combo_studio_unlock {
+      timeout-ms = <75>;
+      key-positions = <0 11>;
+      bindings = <&studio_unlock>;
+    };
+  };
+};

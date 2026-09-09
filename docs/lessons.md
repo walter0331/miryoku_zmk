@@ -58,6 +58,47 @@ This also explains carrefinho issue #22, closed with no fix.
   `zmk/app/build/<target>/build_info.yml`** — its `kconfig: files:` list. Read
   that instead of reasoning about merge rules.
 
+### Which keymap a build actually uses
+
+- **`<shield>.keymap` does not win. The shortest base name does.**
+  `post_boards_shields.cmake:19-28` splits each shield name on `_` and appends
+  every shorter prefix to the candidate list, and that list is searched
+  **before** the full shield names. So shield `corne_dongle` generates the
+  candidate `corne`, and `config/corne.keymap` is chosen over
+  `corne_dongle.keymap` — wherever the latter sits, including the config root.
+- Consequence: **every dongle build silently used the halves' keymap.**
+  `config/boards/shields/corne_dongle/corne_dongle.keymap` was never compiled
+  into anything. Invisible for months because both files are the same generated
+  Miryoku, and a keymap that is *identical* cannot misbehave.
+- It stops being invisible the moment the dongle needs a binding the halves must
+  not have. `&studio_unlock` does not exist without `CONFIG_ZMK_STUDIO`, so
+  putting it in the shared keymap breaks the `left`/`right` builds outright.
+- The fix is `-DKEYMAP_FILE=<absolute path>`, which short-circuits the whole
+  search. Nothing else is reliable.
+- **Ground truth is `zmk/app/build/<target>/CMakeCache.txt`**, line
+  `KEYMAP_FILE:STRING=...`, or the `-- Using keymap file:` line in the build
+  output. Do not infer it from the filename.
+- The tell that the edit did nothing: FLASH and RAM came back **byte-identical**
+  to the previous build. Identical sizes after a real source change means the
+  change was not compiled.
+
+### ZMK Studio locks, and Miryoku cannot unlock it
+
+- `ZMK_STUDIO_RPC` implies `ZMK_STUDIO_LOCKING`, with `LOCK_ON_DISCONNECT=y` and
+  a 600 s idle timeout. Studio refuses to connect until unlocked.
+- Miryoku binds `&studio_unlock` nowhere, and there is no default combination.
+  Without adding one, the "press the unlock key combination" prompt is
+  **unsatisfiable** — no key does it.
+- A combo is the additive fix, since Miryoku's layers are macro-generated and
+  awkward to patch. Positions 0 and 11 (top-row outer keys) are `&none` on all
+  ten layers, so a combo there costs no binding.
+- `ZMK_COMBO_MAX_COMBOS_PER_KEY` and `ZMK_COMBO_MAX_KEYS_PER_COMBO` read `0` in
+  a working build. They are **deprecated** (`app/Kconfig:454-464`, "determined
+  automatically") — 0 there is not evidence of a broken combo. Check for the
+  node in `zephyr/zephyr.dts` instead.
+- Keeping the lock is a real choice, not ceremony: unlocked, any process that
+  can open `/dev/cu.usbmodem*` can rewrite the keymap over Studio RPC.
+
 ### Activity, sleep, and the display
 
 - A keypress on a BLE **peripheral** does reset the **central's** activity timer:
